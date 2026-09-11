@@ -40,6 +40,21 @@ function containerStats(c){
 }
 function itemStatus(i){const m=Math.max(i.expected-i.present-i.repair,0);if(m>0)return["danger",`${m} manquant${m>1?"s":""}`];if(i.repair>0)return["warning",`${i.repair} en réparation`];return["good","Complet"]}
 
+function itemTypeLabel(i){
+  if(i.item_type==="machine")return "Engin de chantier";
+  if(i.item_type==="sling")return "Élingue de grue";
+  return "";
+}
+function itemMetaHTML(i){
+  const bits=[];
+  const type=itemTypeLabel(i);if(type)bits.push(type);
+  if(i.brand)bits.push(i.brand);
+  if(i.model)bits.push(i.model);
+  const line=bits.length?`<div class="muted item-meta">${bits.map(esc).join(" · ")}</div>`:"";
+  const desc=i.description?`<div class="muted item-description">${esc(i.description)}</div>`:"";
+  return line+desc;
+}
+
 async function ensureAnonymousAuth(){
   const {data:{session:authSession},error}=await sb.auth.getSession();
   if(error)throw error;
@@ -218,7 +233,7 @@ function inventoryActions(i,{transfer=false}={}){
     <button class="btn btn-light btn-sm" onclick="openCount('${i.id}')">✏️ Compter</button>
     <button class="btn btn-danger btn-sm" onclick="openRepair('${i.id}')">🔧 Réparer</button>
     ${i.repair>0?`<button class="btn btn-success btn-sm" onclick="openReturn('${i.id}')">↩ Retour</button>`:""}
-    ${i.requires_serial?`<button class="btn btn-accent btn-sm" onclick="openUnits('${i.id}')">#️⃣ N° série</button>`:""}
+    ${i.requires_serial?`<button class="btn btn-accent btn-sm" onclick="openUnits('${i.id}')">${i.requires_laser_control||i.requires_sling_control?"📅 Contrôle":"#️⃣ N° série"}</button>`:""}
     ${transfer&&["admin","chef","depot"].includes(session.type)?`<button class="btn btn-primary btn-sm" onclick="openTransfer('${i.id}')">⇄ Transférer</button>`:""}
     <button class="btn btn-light btn-sm" onclick="openItemEdit('${i.id}')">⚙️ Modifier</button>
   </div>`;
@@ -228,11 +243,11 @@ function inventoryHTML(c,opts={}){
   const list=itemsFor(c.id).filter(i=>!(c.kind==="depot"&&i.expected===0&&i.present===0&&i.repair===0));
   const rows=list.map(i=>{
     const missing=Math.max(i.expected-i.present-i.repair,0),[cl,txt]=itemStatus(i);
-    return `<tr><td><div class="item-name">${esc(i.name)}</div><div class="muted">Prévu : ${i.expected}</div></td><td class="qty">${i.present}</td><td class="qty">${i.repair}</td><td class="qty">${missing}</td><td><span class="status ${cl}">${txt}</span></td><td>${inventoryActions(i,opts)}</td></tr>`;
+    return `<tr><td><div class="item-name">${esc(i.name)}</div>${itemMetaHTML(i)}<div class="muted">Prévu : ${i.expected}</div></td><td class="qty">${i.present}</td><td class="qty">${i.repair}</td><td class="qty">${missing}</td><td><span class="status ${cl}">${txt}</span></td><td>${inventoryActions(i,opts)}</td></tr>`;
   }).join("");
   const cards=list.map(i=>{
     const missing=Math.max(i.expected-i.present-i.repair,0),[cl,txt]=itemStatus(i);
-    return `<div class="item-card"><div class="item-head"><div><div class="item-name">${esc(i.name)}</div><div class="muted">Prévu : ${i.expected}</div></div><span class="status ${cl}">${txt}</span></div><div class="item-stats"><div class="mini"><b>${i.present}</b><span>Présent</span></div><div class="mini"><b>${i.repair}</b><span>Réparation</span></div><div class="mini"><b>${missing}</b><span>Manquant</span></div><div class="mini"><b>${i.expected}</b><span>Prévu</span></div></div>${inventoryActions(i,opts)}</div>`;
+    return `<div class="item-card"><div class="item-head"><div><div class="item-name">${esc(i.name)}</div>${itemMetaHTML(i)}<div class="muted">Prévu : ${i.expected}</div></div><span class="status ${cl}">${txt}</span></div><div class="item-stats"><div class="mini"><b>${i.present}</b><span>Présent</span></div><div class="mini"><b>${i.repair}</b><span>Réparation</span></div><div class="mini"><b>${missing}</b><span>Manquant</span></div><div class="mini"><b>${i.expected}</b><span>Prévu</span></div></div>${inventoryActions(i,opts)}</div>`;
   }).join("");
   if(!list.length)return '<div class="card empty">Aucun matériel enregistré.</div>';
   return `<div class="table-card inventory"><table class="table"><thead><tr><th>Matériel</th><th>Présent</th><th>Réparation</th><th>Manquant</th><th>État</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div><div class="mobile-cards">${cards}</div>`;
@@ -262,7 +277,7 @@ function historyHTML(cid=null,limit=25){
 function transferCardsHTML(c,emptyText){
   const list=itemsFor(c.id).filter(i=>(+i.present||0)>0);
   if(!list.length)return `<div class="card empty">${esc(emptyText)}</div>`;
-  return `<div class="grid grid-2">${list.map(i=>`<div class="card transfer-card"><div class="transfer-card-head"><div><div class="item-name">${esc(i.name)}</div><div class="muted">${i.requires_serial?"Suivi par numéro de série · ":""}${i.present} présent${i.present>1?"s":""}</div></div><span class="status good">${i.present} dispo.</span></div><button class="btn btn-primary btn-block" onclick="openTransfer('${i.id}')">⇄ Transférer</button></div>`).join("")}</div>`;
+  return `<div class="grid grid-2">${list.map(i=>`<div class="card transfer-card"><div class="transfer-card-head"><div><div class="item-name">${esc(i.name)}</div>${itemMetaHTML(i)}<div class="muted">${i.requires_serial?"Suivi individuel · ":""}${i.present} présent${i.present>1?"s":""}</div></div><span class="status good">${i.present} dispo.</span></div><button class="btn btn-primary btn-block" onclick="openTransfer('${i.id}')">⇄ Transférer</button></div>`).join("")}</div>`;
 }
 
 function setChefTab(t){
@@ -288,7 +303,7 @@ function renderChefTab(){
   const root=$("#chefContent"),c=currentContainer();if(!root||!c)return;
   if(chefTab==="transfer"){renderChefTransfers(root,c);return}
   root.innerHTML=`
-    <div class="hero"><div><span class="badge">${esc(c.name)}</span><h1>Mon container</h1><p>${c.location?esc(c.location)+" · ":""}Dernier inventaire : ${c.last_inventory?fmtDate(c.last_inventory):"jamais"}</p></div><div class="hero-actions"><button class="btn btn-light" onclick="loadAll()">↻ Actualiser</button><button class="btn btn-accent" onclick="openItemAdd('${c.id}')">＋ Ajouter matériel</button><button class="btn btn-primary" onclick="validateInventory('${c.id}')">✓ Valider inventaire</button></div></div>
+    <div class="hero"><div><span class="badge">${esc(c.name)}</span><h1>Mon container</h1><p>${c.location?esc(c.location)+" · ":""}Dernier inventaire : ${c.last_inventory?fmtDate(c.last_inventory):"jamais"}</p></div><div class="hero-actions"><button class="btn btn-light" onclick="loadAll()">↻ Actualiser</button><button class="btn btn-accent" onclick="openItemAdd('${c.id}')">＋ Matériel</button><button class="btn btn-accent" onclick="openMachineAdd('${c.id}')">🚜 Engin</button><button class="btn btn-accent" onclick="openSlingAdd('${c.id}')">🪝 Élingue</button><button class="btn btn-primary" onclick="validateInventory('${c.id}')">✓ Valider inventaire</button></div></div>
     ${statsCards(containerStats(c))}
     <div class="section-title"><h2>Inventaire</h2><span>${itemsFor(c.id).length} types de matériel</span></div>
     ${inventoryHTML(c)}
@@ -322,7 +337,7 @@ function renderPublicDepot(){
   root.innerHTML=`
     <div class="brand-panel"><h2>Rosset Boulon &amp; Fils</h2><p>Espace dépôt commun accessible sans mot de passe.</p><div class="brand-tags"><span class="brand-tag">Dépôt RB&amp;F</span><span class="brand-tag">Accès libre</span><span class="brand-tag">Temps réel</span></div></div>
     <div class="depot-note"><b>Dépôt central :</b> vous pouvez ajouter et gérer le matériel du dépôt, puis le transférer vers le container du chef de chantier choisi.</div>
-    <div class="hero"><div><span class="badge">DÉPÔT</span><h1>${esc(d.name)}</h1><p>${d.location?esc(d.location):"Stock central RB&F"}</p></div><div class="hero-actions"><button class="btn btn-accent" onclick="openItemAdd('${d.id}')">＋ Ajouter au dépôt</button><button class="btn btn-light" onclick="loadAll()">↻ Actualiser</button></div></div>
+    <div class="hero"><div><span class="badge">DÉPÔT</span><h1>${esc(d.name)}</h1><p>${d.location?esc(d.location):"Stock central RB&F"}</p></div><div class="hero-actions"><button class="btn btn-accent" onclick="openItemAdd('${d.id}')">＋ Matériel</button><button class="btn btn-accent" onclick="openMachineAdd('${d.id}')">🚜 Engin</button><button class="btn btn-accent" onclick="openSlingAdd('${d.id}')">🪝 Élingue</button><button class="btn btn-light" onclick="loadAll()">↻ Actualiser</button></div></div>
     ${statsCards(containerStats(d))}
     <div class="section-title"><h2>Matériel au dépôt</h2><span>${itemsFor(d.id).filter(i=>i.expected||i.present||i.repair).length} types</span></div>
     ${inventoryHTML(d,{transfer:true})}
@@ -369,7 +384,7 @@ function renderDepot(root){
   if(!d){root.innerHTML='<div class="card empty">Dépôt introuvable dans Supabase.</div>';return}
   root.innerHTML=`
     <div class="depot-note"><b>Dépôt central :</b> ajoutez du matériel directement ici, ou transférez du matériel entre le dépôt et un container chef.</div>
-    <div class="hero"><div><span class="badge">DÉPÔT</span><h1>${esc(d.name)}</h1><p>${d.location?esc(d.location):"Stock central RB&F"}</p></div><div class="hero-actions"><button class="btn btn-accent" onclick="openItemAdd('${d.id}')">＋ Ajouter au dépôt</button><button class="btn btn-light" onclick="loadAll()">↻ Actualiser</button></div></div>
+    <div class="hero"><div><span class="badge">DÉPÔT</span><h1>${esc(d.name)}</h1><p>${d.location?esc(d.location):"Stock central RB&F"}</p></div><div class="hero-actions"><button class="btn btn-accent" onclick="openItemAdd('${d.id}')">＋ Matériel</button><button class="btn btn-accent" onclick="openMachineAdd('${d.id}')">🚜 Engin</button><button class="btn btn-accent" onclick="openSlingAdd('${d.id}')">🪝 Élingue</button><button class="btn btn-light" onclick="loadAll()">↻ Actualiser</button></div></div>
     ${statsCards(containerStats(d))}
     <div class="section-title"><h2>Matériel au dépôt</h2><span>${itemsFor(d.id).filter(i=>i.expected||i.present||i.repair).length} types</span></div>
     ${inventoryHTML(d,{transfer:true})}
@@ -391,7 +406,7 @@ function renderAdminContainer(id){
   $("#chefScreen").classList.add("hidden");
   const root=$("#adminScreen");root.classList.remove("hidden");
   root.innerHTML=`
-    <div class="hero"><div><button class="btn btn-light btn-sm" onclick="session.containerId=null;renderAdmin()">← Retour</button><h1 style="margin-top:12px">${esc(chefName(c))}</h1><p>${esc(c.name)}${c.location?" · "+esc(c.location):""}</p></div><div class="hero-actions"><button class="btn btn-light" onclick="openContainerMeta('${c.id}')">⚙️ Container</button><button class="btn btn-accent" onclick="openItemAdd('${c.id}')">＋ Ajouter matériel</button></div></div>
+    <div class="hero"><div><button class="btn btn-light btn-sm" onclick="session.containerId=null;renderAdmin()">← Retour</button><h1 style="margin-top:12px">${esc(chefName(c))}</h1><p>${esc(c.name)}${c.location?" · "+esc(c.location):""}</p></div><div class="hero-actions"><button class="btn btn-light" onclick="openContainerMeta('${c.id}')">⚙️ Container</button><button class="btn btn-accent" onclick="openItemAdd('${c.id}')">＋ Matériel</button><button class="btn btn-accent" onclick="openMachineAdd('${c.id}')">🚜 Engin</button><button class="btn btn-accent" onclick="openSlingAdd('${c.id}')">🪝 Élingue</button></div></div>
     ${statsCards(containerStats(c))}
     <div class="depot-note">Depuis cet écran, le bouton <b>Transférer</b> permet de déposer du matériel de ce container vers le dépôt central.</div>
     <div class="section-title"><h2>Inventaire</h2><span>${itemsFor(c.id).length} types</span></div>
@@ -417,22 +432,28 @@ async function openUnits(id){
   let item=getItem(id);if(!item)return;
   try{await syncUnitsToExpected(item)}catch(e){toast("Erreur unités : "+e.message);return}
   item=getItem(id);
-  const units=unitsFor(id),isLaser=!!item.requires_laser_control;
-  const rows=units.map(u=>`<div style="padding:12px 0;border-bottom:1px solid var(--line)"><div class="item-name" style="margin-bottom:8px">Exemplaire ${u.unit_no}</div><div class="form-grid"><div class="field ${isLaser?"":"full"}"><label>Numéro de série</label><input id="serial_${u.id}" value="${esc(u.serial_number||"")}" placeholder="N° de série"></div>${isLaser?`<div class="field"><label>Date du contrôle</label><input id="control_${u.id}" type="date" value="${u.control_date||""}"></div><div class="field full"><label>Date à faire contrôler</label><input id="next_${u.id}" type="date" value="${u.next_control_date||""}"></div>`:""}</div></div>`).join("");
-  modal(isLaser?"Suivi des boîtes de laser":"Numéros de série",`<div class="muted" style="margin-bottom:10px">${esc(item.name)} · ${units.length} exemplaire(s)</div>${rows||'<div class="empty">Aucun exemplaire.</div>'}`,`<button class="btn btn-light" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUnits('${id}')">Enregistrer</button>`);
+  const units=unitsFor(id);
+  const isLaser=!!item.requires_laser_control;
+  const isSling=!!item.requires_sling_control||item.item_type==="sling";
+  const hasControl=isLaser||isSling;
+  const rows=units.map(u=>`<div style="padding:12px 0;border-bottom:1px solid var(--line)"><div class="item-name" style="margin-bottom:8px">Exemplaire ${u.unit_no}</div><div class="form-grid"><div class="field ${hasControl?"":"full"}"><label>${isSling?"N° d’identification / série":"Numéro de série"}</label><input id="serial_${u.id}" value="${esc(u.serial_number||"")}" placeholder="${isSling?"N° d’identification":"N° de série"}"></div>${hasControl?`<div class="field"><label>${isSling?"Date du dernier contrôle":"Date du contrôle"}</label><input id="control_${u.id}" type="date" value="${u.control_date||""}"></div><div class="field full"><label>${isSling?"Date du prochain contrôle":"Date à faire contrôler"}</label><input id="next_${u.id}" type="date" value="${u.next_control_date||""}"></div>`:""}</div></div>`).join("");
+  const title=isSling?"Contrôle des élingues de grue":isLaser?"Suivi des boîtes de laser":"Numéros de série";
+  modal(title,`<div class="muted" style="margin-bottom:10px">${esc(item.name)} · ${units.length} exemplaire(s)</div>${rows||'<div class="empty">Aucun exemplaire.</div>'}`,`<button class="btn btn-light" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUnits('${id}')">Enregistrer</button>`);
 }
 
 async function saveUnits(itemId){
   const item=getItem(itemId);if(!item)return;
   const units=unitsFor(itemId);
+  const hasControl=!!item.requires_laser_control||!!item.requires_sling_control||item.item_type==="sling";
   try{
     for(const u of units){
       const patch={serial_number:($(`#serial_${u.id}`)?.value||"").trim()};
-      if(item.requires_laser_control){patch.control_date=$(`#control_${u.id}`)?.value||null;patch.next_control_date=$(`#next_${u.id}`)?.value||null}
+      if(hasControl){patch.control_date=$(`#control_${u.id}`)?.value||null;patch.next_control_date=$(`#next_${u.id}`)?.value||null}
       const {error}=await sb.from("equipment_units").update(patch).eq("id",u.id);if(error)throw error;
     }
     const c=getContainer(item.container_id);
-    await addHistory("serial_update",c,item.name,units.length,item.requires_laser_control?"N° série et contrôles laser mis à jour":"N° de série mis à jour");
+    const note=item.requires_sling_control||item.item_type==="sling"?"Identification et dates de contrôle des élingues mises à jour":item.requires_laser_control?"N° série et contrôles laser mis à jour":"N° de série mis à jour";
+    await addHistory("serial_update",c,item.name,units.length,note);
     closeModal();await loadAll({quiet:true});toast("Suivi matériel enregistré");
   }catch(e){toast("Erreur : "+e.message)}
 }
@@ -457,25 +478,57 @@ function openItemAdd(containerId){
 async function saveItemAdd(containerId){
   const c=getContainer(containerId),name=$("#itemName").value.trim(),expected=Math.max(0,+$("#itemExpected").value||0),present=Math.max(0,+$("#itemPresent").value||0),laser=!!$("#itemLaser").checked,serial=!!$("#itemSerial").checked||laser;
   if(!name){toast("Indique un nom.");return}
-  const {data,error}=await sb.from("container_items").insert({container_id:c.id,catalog_id:null,name,expected,present,repair:0,requires_serial:serial,requires_laser_control:laser}).select().single();
+  const {data,error}=await sb.from("container_items").insert({container_id:c.id,catalog_id:null,name,expected,present,repair:0,requires_serial:serial,requires_laser_control:laser,requires_sling_control:false,item_type:"material",brand:"",model:"",description:""}).select().single();
   if(error){toast("Erreur : "+error.message);return}
   if(serial){const rows=[];for(let n=1;n<=expected;n++)rows.push({container_item_id:data.id,unit_no:n});if(rows.length){const r=await sb.from("equipment_units").insert(rows);if(r.error){toast("Matériel ajouté, mais erreur unités : "+r.error.message);return}}}
   await addHistory("item_add",c,name,expected,c.kind==="depot"?"Ajout au dépôt":"Ajout propre à ce container");
   closeModal();await loadAll({quiet:true});toast("Matériel ajouté");
 }
 
+function openMachineAdd(containerId){
+  const c=getContainer(containerId);if(!c)return;
+  modal("Ajouter un engin de chantier",`<div class="form-grid"><div class="field full"><label>Type / nom de l'engin</label><input id="machineName" placeholder="Ex. Mini-pelle, télescopique, dumper..."></div><div class="field"><label>Marque</label><input id="machineBrand" placeholder="Ex. CAT, Manitou..."></div><div class="field"><label>Modèle</label><input id="machineModel" placeholder="Ex. 302.7 CR"></div><div class="field full"><label>Description</label><textarea id="machineDesc" placeholder="Caractéristiques, accessoires, remarques..."></textarea></div><div class="field"><label>Quantité</label><input id="machineQty" type="number" min="1" value="1"></div><div class="field"><label>N° de série / identification (si 1 engin)</label><input id="machineSerial" placeholder="N° série, parc ou identification"></div></div><div class="depot-note" style="margin-top:12px">Chaque engin est suivi individuellement. Si vous ajoutez plusieurs exemplaires, vous pourrez renseigner chaque numéro de série via le bouton <b>N° série</b>.</div>`,`<button class="btn btn-light" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveMachineAdd('${c.id}')">Ajouter l'engin</button>`);
+}
+
+async function saveMachineAdd(containerId){
+  const c=getContainer(containerId),name=$("#machineName").value.trim(),brand=$("#machineBrand").value.trim(),model=$("#machineModel").value.trim(),description=$("#machineDesc").value.trim(),qty=Math.max(1,+$("#machineQty").value||1),serial=$("#machineSerial").value.trim();
+  if(!name){toast("Indique le type ou le nom de l'engin.");return}
+  const {data,error}=await sb.from("container_items").insert({container_id:c.id,catalog_id:null,name,expected:qty,present:qty,repair:0,requires_serial:true,requires_laser_control:false,requires_sling_control:false,item_type:"machine",brand,model,description}).select().single();
+  if(error){toast("Erreur : "+error.message);return}
+  const rows=[];for(let n=1;n<=qty;n++)rows.push({container_item_id:data.id,unit_no:n,serial_number:n===1?serial:""});
+  if(rows.length){const r=await sb.from("equipment_units").insert(rows);if(r.error){toast("Engin ajouté, mais erreur unités : "+r.error.message);return}}
+  await addHistory("item_add",c,name,qty,`Engin de chantier${brand?" · "+brand:""}${model?" · "+model:""}`);
+  closeModal();await loadAll({quiet:true});toast("Engin de chantier ajouté");
+}
+
+function openSlingAdd(containerId){
+  const c=getContainer(containerId);if(!c)return;
+  modal("Ajouter des élingues de grue",`<div class="form-grid"><div class="field full"><label>Nom / référence</label><input id="slingName" value="Élingue de grue" placeholder="Ex. Élingue chaîne 4 brins"></div><div class="field"><label>Marque</label><input id="slingBrand" placeholder="Marque"></div><div class="field"><label>Modèle / référence</label><input id="slingModel" placeholder="Référence ou modèle"></div><div class="field full"><label>Description</label><textarea id="slingDesc" placeholder="CMU, longueur, nombre de brins, diamètre, remarques..."></textarea></div><div class="field full"><label>Quantité</label><input id="slingQty" type="number" min="1" value="1"></div></div><div class="depot-note" style="margin-top:12px"><b>Contrôle obligatoire :</b> après l'ajout, une fiche s'ouvrira pour chaque élingue afin de saisir son n° d'identification, la date du dernier contrôle et la date du prochain contrôle.</div>`,`<button class="btn btn-light" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveSlingAdd('${c.id}')">Ajouter les élingues</button>`);
+}
+
+async function saveSlingAdd(containerId){
+  const c=getContainer(containerId),name=$("#slingName").value.trim()||"Élingue de grue",brand=$("#slingBrand").value.trim(),model=$("#slingModel").value.trim(),description=$("#slingDesc").value.trim(),qty=Math.max(1,+$("#slingQty").value||1);
+  const {data,error}=await sb.from("container_items").insert({container_id:c.id,catalog_id:null,name,expected:qty,present:qty,repair:0,requires_serial:true,requires_laser_control:false,requires_sling_control:true,item_type:"sling",brand,model,description}).select().single();
+  if(error){toast("Erreur : "+error.message);return}
+  const rows=[];for(let n=1;n<=qty;n++)rows.push({container_item_id:data.id,unit_no:n});
+  if(rows.length){const r=await sb.from("equipment_units").insert(rows);if(r.error){toast("Élingues ajoutées, mais erreur unités : "+r.error.message);return}}
+  await addHistory("item_add",c,name,qty,"Élingues de grue avec suivi des dates de contrôle");
+  closeModal();await loadAll({quiet:true});toast("Élingues ajoutées — renseignez maintenant les contrôles");
+  await openUnits(data.id);
+}
+
 function openItemEdit(id){
   const i=getItem(id);
-  modal("Modifier / supprimer",`<div class="form-grid"><div class="field full"><label>Nom</label><input id="editName" value="${esc(i.name)}"></div><div class="field"><label>Prévu</label><input id="editExpected" type="number" min="0" value="${i.expected}"></div><div class="field"><label>Présent</label><input id="editPresent" type="number" min="0" value="${i.present}"></div><div class="field full"><label>En réparation</label><input id="editRepair" type="number" min="0" value="${i.repair}"></div><div class="field full"><label><input id="editSerial" type="checkbox" style="width:auto" ${i.requires_serial?"checked":""}> Suivre le numéro de série</label></div><div class="field full"><label><input id="editLaser" type="checkbox" style="width:auto" ${i.requires_laser_control?"checked":""}> Matériel laser : dates de contrôle</label></div></div>`,`<button class="btn btn-danger" onclick="deleteItem('${id}')">🗑 Supprimer</button><button class="btn btn-light" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveItemEdit('${id}')">Enregistrer</button>`);
+  modal("Modifier / supprimer",`<div class="form-grid"><div class="field full"><label>Nom</label><input id="editName" value="${esc(i.name)}"></div><div class="field"><label>Type</label><select id="editType"><option value="material" ${i.item_type!=="machine"&&i.item_type!=="sling"?"selected":""}>Matériel</option><option value="machine" ${i.item_type==="machine"?"selected":""}>Engin de chantier</option><option value="sling" ${i.item_type==="sling"?"selected":""}>Élingue de grue</option></select></div><div class="field"><label>Marque</label><input id="editBrand" value="${esc(i.brand||"")}"></div><div class="field"><label>Modèle / référence</label><input id="editModel" value="${esc(i.model||"")}"></div><div class="field full"><label>Description</label><textarea id="editDescription">${esc(i.description||"")}</textarea></div><div class="field"><label>Prévu</label><input id="editExpected" type="number" min="0" value="${i.expected}"></div><div class="field"><label>Présent</label><input id="editPresent" type="number" min="0" value="${i.present}"></div><div class="field full"><label>En réparation</label><input id="editRepair" type="number" min="0" value="${i.repair}"></div><div class="field full"><label><input id="editSerial" type="checkbox" style="width:auto" ${i.requires_serial?"checked":""}> Suivre le numéro de série / identification</label></div><div class="field full"><label><input id="editLaser" type="checkbox" style="width:auto" ${i.requires_laser_control?"checked":""}> Matériel laser : dates de contrôle</label></div><div class="field full"><label><input id="editSling" type="checkbox" style="width:auto" ${i.requires_sling_control||i.item_type==="sling"?"checked":""}> Élingue de grue : dates de contrôle</label></div></div>`,`<button class="btn btn-danger" onclick="deleteItem('${id}')">🗑 Supprimer</button><button class="btn btn-light" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveItemEdit('${id}')">Enregistrer</button>`);
 }
 
 async function saveItemEdit(id){
-  const i=getItem(id),c=getContainer(i.container_id),laser=!!$("#editLaser").checked,serial=!!$("#editSerial").checked||laser;
-  const patch={name:$("#editName").value.trim()||i.name,expected:Math.max(0,+$("#editExpected").value||0),present:Math.max(0,+$("#editPresent").value||0),repair:Math.max(0,+$("#editRepair").value||0),requires_serial:serial,requires_laser_control:laser};
+  const i=getItem(id),c=getContainer(i.container_id),type=$("#editType").value||"material",laser=!!$("#editLaser").checked,sling=!!$("#editSling").checked||type==="sling",serial=!!$("#editSerial").checked||laser||sling||type==="machine";
+  const patch={name:$("#editName").value.trim()||i.name,item_type:type,brand:$("#editBrand").value.trim(),model:$("#editModel").value.trim(),description:$("#editDescription").value.trim(),expected:Math.max(0,+$("#editExpected").value||0),present:Math.max(0,+$("#editPresent").value||0),repair:Math.max(0,+$("#editRepair").value||0),requires_serial:serial,requires_laser_control:laser,requires_sling_control:sling};
   const{error}=await sb.from("container_items").update(patch).eq("id",id);if(error){toast("Erreur : "+error.message);return}
   if(serial){await loadAll({quiet:true});await syncUnitsToExpected(getItem(id))}
   else{const oldUnits=unitsFor(id);if(oldUnits.length){const ids=oldUnits.map(u=>u.id);const r=await sb.from("equipment_units").delete().in("id",ids);if(r.error){toast("Erreur : "+r.error.message);return}}}
-  await addHistory("item_edit",c,patch.name,patch.expected,"");closeModal();await loadAll({quiet:true});toast("Matériel modifié");
+  await addHistory("item_edit",c,patch.name,patch.expected,"Fiche matériel mise à jour");closeModal();await loadAll({quiet:true});toast("Matériel modifié");
 }
 
 async function deleteItem(id){
