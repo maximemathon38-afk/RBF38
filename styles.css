@@ -118,3 +118,8 @@ button{touch-action:manipulation}
   .topbar-inner{padding:9px 10px}.brand-logo{width:38px;height:38px}.sync .sync-label{display:none}.stat-num{font-size:24px}
   .top-actions{gap:6px}.top-actions .btn{padding:7px 8px}.hero-actions{grid-template-columns:1fr}.chef-edit-row{align-items:flex-start;flex-direction:column}.chef-edit-row .btn{width:100%}
 }
+
+/* V5.1 — dépôt public + transferts chefs */
+.public-entry{margin-top:16px}.public-entry+.admin-entry{margin-top:10px;padding-top:10px}.depot-access-btn{font-size:14px}
+.chef-tabs{margin-top:0}.transfer-section{margin-top:20px}.transfer-card{display:flex;flex-direction:column;gap:13px}.transfer-card-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+@media(max-width:800px){.transfer-card .btn{width:100%}}
