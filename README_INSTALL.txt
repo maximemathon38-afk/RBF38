@@ -1,24 +1,26 @@
-RB&F — SUIVI CONTAINERS V5
-===========================
+RB&F — SUIVI CONTAINERS V5.1
+=============================
 
-Cette version est prévue pour repartir sur un NOUVEAU projet Supabase et un nouveau dépôt GitHub.
+NOUVEAUTÉS V5.1
+----------------
+1. DÉPÔT ACCESSIBLE À TOUS SANS MOT DE PASSE APPLICATIF.
+   - bouton « Dépôt — accès libre sans mot de passe » sur l'écran d'accueil ;
+   - ajout, comptage, réparation, numéros de série et modification du matériel du dépôt ;
+   - transfert du dépôt vers le container du chef choisi.
 
-NOUVEAUTÉS
------------
-1. Accès privé par chef de chantier.
-   Mot de passe = RBF + prénom.
-2. Onglet ADMIN > DÉPÔT.
-   - ajouter du matériel directement au dépôt ;
-   - modifier / compter / suivre les numéros de série ;
-   - transférer du dépôt vers un chef ;
-   - depuis le container d'un chef, transférer du matériel vers le dépôt.
-3. Le transfert met automatiquement à jour les deux inventaires.
-4. Pour le matériel avec numéro de série, on choisit les exemplaires à transférer et leur fiche suit le matériel.
-5. Onglet ADMIN > MODIFIER pour modifier le nom et le prénom des chefs.
-6. Si le prénom d'un chef est modifié, son mot de passe est automatiquement recalculé : RBF + nouveau prénom.
+2. NOUVEL ONGLET « TRANSFÉRER » DANS L'ESPACE PRIVÉ DE CHAQUE CHEF.
+   - « Transférer au dépôt » : matériel de son container -> dépôt ;
+   - « Transférer sur mon chantier » : matériel du dépôt -> son propre container ;
+   - un chef ne peut pas transférer du matériel vers le container d'un autre chef.
 
-MOTS DE PASSE INITIAUX
-----------------------
+3. Les transferts déplacent automatiquement les quantités et, pour le matériel sérialisé,
+   les numéros de série et dates de contrôle associés.
+
+4. L'onglet ADMIN > MODIFIER reste EXCLUSIVEMENT dans l'espace administrateur.
+
+ACCÈS
+-----
+Dépôt : aucun mot de passe applicatif.
 Administrateur : RBF2026
 
 RIBEIRO PEREIRA Mario : RBFMario
@@ -28,27 +30,32 @@ VANNEREUX Teddy : RBFTeddy
 BESA SOUSA Ricardo : RBFRicardo
 SILVA DOS SANTOS José : RBFJosé
 
-IMPORTANT : ces mots de passe sont volontairement simples car ils suivent la règle demandée. Pour une application exposée publiquement, il est recommandé de choisir des mots de passe plus forts.
+IMPORTANT : « sans mot de passe » signifie sans mot de passe RB&F. L'application utilise toujours
+une session anonyme Supabase en arrière-plan. L'option Anonymous Sign-Ins doit donc rester activée.
 
-INSTALLATION SUPABASE
----------------------
-1. Créer un nouveau projet Supabase.
-2. Dans Authentication, activer les connexions anonymes / Anonymous Sign-Ins.
-   Le nom exact du menu peut varier légèrement dans l'interface Supabase.
-3. Ouvrir SQL Editor > New query.
+SI TON SUPABASE V5 EST DÉJÀ CRÉÉ
+--------------------------------
+NE recolle PAS tout supabase_schema.sql.
+
+1. Va dans Supabase > SQL Editor > New query.
+2. Ouvre PATCH_V5_1.sql.
+3. Copie TOUT le contenu du patch.
+4. Colle-le dans Supabase puis clique sur Run.
+5. Le résultat final doit afficher : PATCH V5.1 OK.
+
+Le patch conserve les inventaires et l'historique déjà présents.
+
+SI TU RECRÉES UNE BASE SUPABASE NEUVE
+-------------------------------------
+1. Créer le projet Supabase.
+2. Authentication > Sign In / Providers > activer « Allow anonymous sign-ins ».
+3. SQL Editor > New query.
 4. Copier TOUT le contenu de supabase_schema.sql.
-5. Cliquer sur Run une seule fois sur la base neuve.
-6. Vérifier que la fin du script affiche les 6 chefs et les containers + le dépôt.
-7. Récupérer dans les réglages API du projet :
-   - Project URL
-   - clé PUBLIABLE / ANON (jamais une clé secrète/service_role)
-8. Ouvrir config.js et remplacer :
-   SUPABASE_URL
-   SUPABASE_PUBLISHABLE_KEY
+5. Cliquer sur Run.
 
-INSTALLATION GITHUB
--------------------
-Mettre ces fichiers à la racine du dépôt :
+GITHUB — FICHIERS À METTRE À JOUR
+---------------------------------
+À la racine du dépôt :
 
 - index.html
 - app.js
@@ -61,21 +68,27 @@ Mettre ces fichiers à la racine du dépôt :
 - rbf-logo.png
 - rbf-banner.png
 
-Le fichier supabase_schema.sql peut aussi être conservé dans GitHub pour archivage, mais il n'est pas exécuté par le site.
+Le fichier config.js de cette archive contient déjà :
+- l'URL du projet : https://uwqhwwjfroalbqctnyyf.supabase.co
+- la clé Supabase PUBLIABLE fournie pour ce projet.
 
-Ensuite activer GitHub Pages sur la branche principale, dossier racine /.
+Ne jamais mettre une clé sb_secret_ / service_role dans GitHub.
 
-TEST CONSEILLÉ
---------------
-1. Ouvrir l'application en navigation privée.
-2. Tester Mario avec RBFMario.
-3. Vérifier qu'il ne voit que son container.
-4. Se déconnecter puis tester l'admin avec RBF2026.
-5. Aller dans Dépôt > ajouter un Piqueur.
-6. Cliquer sur Transférer > choisir Ricardo.
-7. Vérifier que le Piqueur disparaît/diminue au dépôt et apparaît automatiquement dans le container de Ricardo.
-8. Aller dans Modifier > changer un prénom, se déconnecter, puis tester le nouveau mot de passe RBF + nouveau prénom.
+APRÈS LE COMMIT GITHUB
+----------------------
+1. Attendre le redéploiement GitHub Pages.
+2. Ouvrir l'application et faire Ctrl + F5.
+3. Si l'application a été installée sur téléphone, la fermer/réouvrir si nécessaire.
 
-NOTE
-----
-Ne pas relancer tout le fichier supabase_schema.sql sur une base déjà utilisée après avoir renommé les chefs ou saisi des données réelles. Ce fichier est conçu avant tout pour l'installation initiale d'une base neuve.
+TEST RAPIDE
+-----------
+1. Sur l'accueil, cliquer « Dépôt — accès libre sans mot de passe ».
+2. Ajouter ou sélectionner un matériel au dépôt et le transférer vers Ricardo.
+3. Se déconnecter.
+4. Se connecter comme Ricardo avec RBFRicardo.
+5. Ouvrir l'onglet « Transférer ».
+6. Vérifier les deux zones :
+   - Transférer au dépôt ;
+   - Transférer sur mon chantier.
+7. Vérifier que Ricardo ne peut envoyer/reprendre que vers/depuis son propre container.
+8. Se connecter en admin avec RBF2026 et vérifier que l'onglet « Modifier » est toujours uniquement côté admin.
