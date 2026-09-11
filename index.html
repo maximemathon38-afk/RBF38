@@ -8,10 +8,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Containers RB&F">
   <title>RB&F — Suivi Containers</title>
-  <link rel="manifest" href="manifest.webmanifest?v=5.0.0">
+  <link rel="manifest" href="manifest.webmanifest?v=5.1.0">
   <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="icon" href="icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=5.0.0">
+  <link rel="stylesheet" href="styles.css?v=5.1.0">
 </head>
 <body>
   <div id="loginView" class="login-page">
@@ -26,10 +26,13 @@
 
       <div class="login-banner"><img src="rbf-banner.png" alt="Rosset Boulon & Fils"></div>
       <h1>Connexion</h1>
-      <p>Sélectionnez votre nom puis saisissez votre mot de passe personnel.</p>
+      <p>Sélectionnez votre nom puis saisissez votre mot de passe personnel, ou ouvrez directement l'espace dépôt.</p>
       <div id="setupNotice" class="setup hidden"></div>
       <div id="nameGrid" class="name-grid"></div>
 
+      <div class="public-entry">
+        <button class="btn btn-accent btn-block depot-access-btn" onclick="loginDepot()">🏭 Dépôt — accès libre sans mot de passe</button>
+      </div>
       <div class="admin-entry">
         <button class="btn btn-primary btn-block" onclick="loginAdminPrompt()">🔐 Accès administrateur</button>
       </div>
@@ -63,11 +66,11 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=5.0.0"></script>
-  <script src="app.js?v=5.0.0"></script>
+  <script src="config.js?v=5.1.0"></script>
+  <script src="app.js?v=5.1.0"></script>
   <script>
     if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-      navigator.serviceWorker.register("./service-worker.js?v=5.0.0").catch(console.error);
+      navigator.serviceWorker.register("./service-worker.js?v=5.1.0").catch(console.error);
     }
   </script>
 </body>
