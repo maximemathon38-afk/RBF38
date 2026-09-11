@@ -1,7 +1,7 @@
 {
   "name": "RB&F — Suivi Containers",
   "short_name": "Containers RB&F",
-  "description": "Inventaire, dépôt et suivi du matériel des containers Rosset Boulon & Fils.",
+  "description": "Inventaire, dépôt libre, transferts et suivi du matériel des containers Rosset Boulon & Fils.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
