@@ -123,3 +123,5 @@ button{touch-action:manipulation}
 .public-entry{margin-top:16px}.public-entry+.admin-entry{margin-top:10px;padding-top:10px}.depot-access-btn{font-size:14px}
 .chef-tabs{margin-top:0}.transfer-section{margin-top:20px}.transfer-card{display:flex;flex-direction:column;gap:13px}.transfer-card-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
 @media(max-width:800px){.transfer-card .btn{width:100%}}
+
+.item-meta{margin-top:3px;font-weight:700}.item-description{margin-top:2px;max-width:520px;white-space:normal}.transfer-card .item-description{margin-bottom:3px}
