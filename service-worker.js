@@ -1,4 +1,4 @@
-const CACHE="rbf-v5-private-depot";
+const CACHE="rbf-v5-1-public-depot-chef-transfer";
 const STATIC=["./","./index.html","./styles.css","./app.js","./config.js","./manifest.webmanifest","./icon-192.png","./icon-512.png","./rbf-logo.png","./rbf-banner.png"];
 
 self.addEventListener("install",event=>{
