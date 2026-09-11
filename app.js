@@ -4,6 +4,7 @@ let loginChefs=[];
 let state={chefs:[],containers:[],catalog:[],items:[],units:[],history:[]};
 let session={type:null,chefId:null,containerId:null,name:null};
 let adminTab="containers";
+let chefTab="container";
 let refreshTimer=null;
 let realtimeChannel=null;
 
@@ -114,6 +115,20 @@ async function submitAdminLogin(){
   }catch(err){console.error(err);toast("Connexion impossible : "+(err.message||err))}
 }
 
+async function loginDepot(){
+  try{
+    await ensureAnonymousAuth();
+    const {data,error}=await sb.rpc("claim_depot_access");
+    if(error)throw error;
+    if(!data){toast("Accès dépôt impossible.");return}
+    await resumeAppSession();
+    await loadAll();
+    subscribeRealtime();
+    showApp();
+    renderPublicDepot();
+  }catch(err){console.error(err);toast("Accès dépôt impossible : "+(err.message||err))}
+}
+
 async function resumeAppSession(){
   const {data,error}=await sb.rpc("get_my_app_session");
   if(error)throw error;
@@ -122,6 +137,11 @@ async function resumeAppSession(){
   if(s.role==="admin"){
     session={type:"admin",chefId:null,containerId:null,name:"Administrateur"};
     $("#roleSmall").textContent="Administrateur";
+    return true;
+  }
+  if(s.role==="depot"){
+    session={type:"depot",chefId:null,containerId:null,name:"Dépôt (accès libre)"};
+    $("#roleSmall").textContent="Dépôt · Accès libre";
     return true;
   }
   session={type:"chef",chefId:s.chef_id,containerId:s.container_id,name:s.chef_name||"Chef"};
@@ -160,6 +180,8 @@ async function loadAll({quiet=false}={}){
       renderChef();
     }else if(session.type==="admin"){
       if(session.containerId)renderAdminContainer(session.containerId);else renderAdmin();
+    }else if(session.type==="depot"){
+      renderPublicDepot();
     }
     setSync(true,"Synchronisé");
     return true;
@@ -197,7 +219,7 @@ function inventoryActions(i,{transfer=false}={}){
     <button class="btn btn-danger btn-sm" onclick="openRepair('${i.id}')">🔧 Réparer</button>
     ${i.repair>0?`<button class="btn btn-success btn-sm" onclick="openReturn('${i.id}')">↩ Retour</button>`:""}
     ${i.requires_serial?`<button class="btn btn-accent btn-sm" onclick="openUnits('${i.id}')">#️⃣ N° série</button>`:""}
-    ${transfer&&session.type==="admin"?`<button class="btn btn-primary btn-sm" onclick="openTransfer('${i.id}')">⇄ Transférer</button>`:""}
+    ${transfer&&["admin","chef","depot"].includes(session.type)?`<button class="btn btn-primary btn-sm" onclick="openTransfer('${i.id}')">⇄ Transférer</button>`:""}
     <button class="btn btn-light btn-sm" onclick="openItemEdit('${i.id}')">⚙️ Modifier</button>
   </div>`;
 }
@@ -237,18 +259,75 @@ function historyHTML(cid=null,limit=25){
   return `<div class="history">${h.map(x=>`<div class="history-row"><div class="history-icon">•</div><div class="history-main"><b>${esc(historyText(x))}</b><small>${esc(x.actor_name||"")} · ${fmtDate(x.created_at)}${x.note?" · "+esc(x.note):""}</small></div></div>`).join("")}</div>`;
 }
 
+function transferCardsHTML(c,emptyText){
+  const list=itemsFor(c.id).filter(i=>(+i.present||0)>0);
+  if(!list.length)return `<div class="card empty">${esc(emptyText)}</div>`;
+  return `<div class="grid grid-2">${list.map(i=>`<div class="card transfer-card"><div class="transfer-card-head"><div><div class="item-name">${esc(i.name)}</div><div class="muted">${i.requires_serial?"Suivi par numéro de série · ":""}${i.present} présent${i.present>1?"s":""}</div></div><span class="status good">${i.present} dispo.</span></div><button class="btn btn-primary btn-block" onclick="openTransfer('${i.id}')">⇄ Transférer</button></div>`).join("")}</div>`;
+}
+
+function setChefTab(t){
+  if(session.type!=="chef")return;
+  chefTab=t;renderChef();
+}
+
 function renderChef(){
   const c=currentContainer();if(!c)return;
   $("#adminScreen").classList.add("hidden");
   const root=$("#chefScreen");root.classList.remove("hidden");
   root.innerHTML=`
     <div class="brand-panel"><h2>Rosset Boulon &amp; Fils</h2><p>Inventaire et suivi du matériel de ${esc(c.name)}.</p><div class="brand-tags"><span class="brand-tag">${esc(session.name)}</span><span class="brand-tag">${esc(c.name)}</span><span class="brand-tag">Accès privé</span></div></div>
+    <div class="tabs chef-tabs">
+      <button class="tab ${chefTab==="container"?"active":""}" onclick="setChefTab('container')">Mon container</button>
+      <button class="tab ${chefTab==="transfer"?"active":""}" onclick="setChefTab('transfer')">⇄ Transférer</button>
+    </div>
+    <div id="chefContent" style="margin-top:15px"></div>`;
+  renderChefTab();
+}
+
+function renderChefTab(){
+  const root=$("#chefContent"),c=currentContainer();if(!root||!c)return;
+  if(chefTab==="transfer"){renderChefTransfers(root,c);return}
+  root.innerHTML=`
     <div class="hero"><div><span class="badge">${esc(c.name)}</span><h1>Mon container</h1><p>${c.location?esc(c.location)+" · ":""}Dernier inventaire : ${c.last_inventory?fmtDate(c.last_inventory):"jamais"}</p></div><div class="hero-actions"><button class="btn btn-light" onclick="loadAll()">↻ Actualiser</button><button class="btn btn-accent" onclick="openItemAdd('${c.id}')">＋ Ajouter matériel</button><button class="btn btn-primary" onclick="validateInventory('${c.id}')">✓ Valider inventaire</button></div></div>
     ${statsCards(containerStats(c))}
     <div class="section-title"><h2>Inventaire</h2><span>${itemsFor(c.id).length} types de matériel</span></div>
     ${inventoryHTML(c)}
     <div class="section-title"><h2>Historique</h2><span>Mises à jour en temps réel</span></div>
     ${historyHTML(c.id,12)}`;
+}
+
+function renderChefTransfers(root,c){
+  const d=getDepot();
+  if(!d){root.innerHTML='<div class="card empty">Dépôt introuvable.</div>';return}
+  root.innerHTML=`
+    <div class="depot-note"><b>Transferts :</b> vous pouvez déposer du matériel de votre container au dépôt, ou récupérer du matériel du dépôt pour votre chantier. Les quantités et numéros de série sont déplacés automatiquement.</div>
+    <div class="transfer-section">
+      <div class="section-title"><h2>↓ Transférer au dépôt</h2><span>${esc(c.name)} → Dépôt</span></div>
+      ${transferCardsHTML(c,"Aucun matériel présent à transférer vers le dépôt.")}
+    </div>
+    <div class="transfer-section">
+      <div class="section-title"><h2>↑ Transférer sur mon chantier</h2><span>Dépôt → ${esc(c.name)}</span></div>
+      ${transferCardsHTML(d,"Aucun matériel disponible au dépôt.")}
+    </div>
+    <div class="section-title"><h2>Mes derniers transferts</h2></div>
+    ${historyHTML(c.id,20)}`;
+}
+
+function renderPublicDepot(){
+  if(session.type!=="depot"){toast("Accès dépôt requis.");return}
+  $("#adminScreen").classList.add("hidden");
+  const root=$("#chefScreen");root.classList.remove("hidden");
+  const d=getDepot();
+  if(!d){root.innerHTML='<div class="card empty">Dépôt introuvable dans Supabase.</div>';return}
+  root.innerHTML=`
+    <div class="brand-panel"><h2>Rosset Boulon &amp; Fils</h2><p>Espace dépôt commun accessible sans mot de passe.</p><div class="brand-tags"><span class="brand-tag">Dépôt RB&amp;F</span><span class="brand-tag">Accès libre</span><span class="brand-tag">Temps réel</span></div></div>
+    <div class="depot-note"><b>Dépôt central :</b> vous pouvez ajouter et gérer le matériel du dépôt, puis le transférer vers le container du chef de chantier choisi.</div>
+    <div class="hero"><div><span class="badge">DÉPÔT</span><h1>${esc(d.name)}</h1><p>${d.location?esc(d.location):"Stock central RB&F"}</p></div><div class="hero-actions"><button class="btn btn-accent" onclick="openItemAdd('${d.id}')">＋ Ajouter au dépôt</button><button class="btn btn-light" onclick="loadAll()">↻ Actualiser</button></div></div>
+    ${statsCards(containerStats(d))}
+    <div class="section-title"><h2>Matériel au dépôt</h2><span>${itemsFor(d.id).filter(i=>i.expected||i.present||i.repair).length} types</span></div>
+    ${inventoryHTML(d,{transfer:true})}
+    <div class="section-title"><h2>Historique du dépôt</h2><span>Transferts et mouvements</span></div>
+    ${historyHTML(d.id,40)}`;
 }
 
 function renderAdmin(){
@@ -426,8 +505,21 @@ function openTransfer(itemId){
   const i=getItem(itemId),source=getContainer(i.container_id);if(!i||!source)return;
   const depot=getDepot();
   let targets=[];
-  if(source.kind==="depot")targets=chefContainers();
-  else if(depot)targets=[depot];
+
+  if(session.type==="admin"){
+    if(source.kind==="depot")targets=chefContainers();
+    else if(depot)targets=[depot];
+  }else if(session.type==="depot"){
+    if(source.kind!=="depot"){toast("Depuis l'accès libre, les transferts partent uniquement du dépôt.");return}
+    targets=chefContainers();
+  }else if(session.type==="chef"){
+    const own=currentContainer();
+    if(!own){toast("Votre container est introuvable.");return}
+    if(source.kind==="depot")targets=[own];
+    else if(source.id===own.id&&depot)targets=[depot];
+    else{toast("Vous pouvez transférer uniquement entre votre container et le dépôt.");return}
+  }else{toast("Accès non autorisé.");return}
+
   if(!targets.length){toast("Aucune destination disponible.");return}
 
   const targetOptions=targets.map(c=>`<option value="${c.id}">${source.kind==="depot"?esc(chefName(c))+" — ":""}${esc(c.name)}</option>`).join("");
@@ -489,7 +581,9 @@ async function init(){
     const restored=await resumeAppSession();
     if(restored){
       await loadAll();subscribeRealtime();showApp();
-      if(session.type==="chef")renderChef();else renderAdmin();
+      if(session.type==="chef")renderChef();
+      else if(session.type==="admin")renderAdmin();
+      else if(session.type==="depot")renderPublicDepot();
     }else showLogin();
 
     clearInterval(refreshTimer);
