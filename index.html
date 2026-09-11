@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#23377f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Containers RB&F">
+  <title>RB&F — Suivi Containers</title>
+  <link rel="manifest" href="manifest.webmanifest?v=5.0.0">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="icon" href="icon-192.png">
+  <link rel="stylesheet" href="styles.css?v=5.0.0">
+</head>
+<body>
+  <div id="loginView" class="login-page">
+    <div class="login-card">
+      <div class="brand login-brand">
+        <img class="brand-logo brand-logo-large" src="rbf-logo.png" alt="RB&F">
+        <div class="brand-copy">
+          <strong>RB&F — Suivi Containers</strong>
+          <small>Rosset Boulon &amp; Fils</small>
+        </div>
+      </div>
+
+      <div class="login-banner"><img src="rbf-banner.png" alt="Rosset Boulon & Fils"></div>
+      <h1>Connexion</h1>
+      <p>Sélectionnez votre nom puis saisissez votre mot de passe personnel.</p>
+      <div id="setupNotice" class="setup hidden"></div>
+      <div id="nameGrid" class="name-grid"></div>
+
+      <div class="admin-entry">
+        <button class="btn btn-primary btn-block" onclick="loginAdminPrompt()">🔐 Accès administrateur</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="appView" class="hidden">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <img class="brand-logo" src="rbf-logo.png" alt="RB&F">
+          <div class="brand-copy">
+            <strong>RB&F — Suivi Containers</strong>
+            <small id="roleSmall">Rosset Boulon &amp; Fils</small>
+          </div>
+        </div>
+        <div class="top-actions">
+          <div id="syncState" class="sync offline"><span class="sync-dot"></span><span class="sync-label">Connexion…</span></div>
+          <button class="btn btn-light btn-sm" onclick="logout()">Déconnexion</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="page">
+      <section id="chefScreen" class="hidden"></section>
+      <section id="adminScreen" class="hidden"></section>
+    </main>
+  </div>
+
+  <div id="modalRoot"></div>
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js?v=5.0.0"></script>
+  <script src="app.js?v=5.0.0"></script>
+  <script>
+    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+      navigator.serviceWorker.register("./service-worker.js?v=5.0.0").catch(console.error);
+    }
+  </script>
+</body>
+</html>
