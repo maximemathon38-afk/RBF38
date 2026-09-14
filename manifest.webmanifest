@@ -1,7 +1,7 @@
 {
   "name": "RB&F — Suivi Containers",
   "short_name": "Containers RB&F",
-  "description": "Inventaire, dépôt libre, transferts, engins de chantier et contrôles des élingues de grue Rosset Boulon & Fils.",
+  "description": "Inventaire, factures, réparations, dépôt, transferts et contrôles du matériel Rosset Boulon & Fils.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

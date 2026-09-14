@@ -1,10 +1,12 @@
 const cfg=window.RBF_CONFIG||{};
 let sb=null;
 let loginChefs=[];
-let state={chefs:[],containers:[],catalog:[],items:[],units:[],history:[]};
+let state={chefs:[],containers:[],catalog:[],items:[],units:[],history:[],documents:[]};
 let session={type:null,chefId:null,containerId:null,name:null};
 let adminTab="containers";
+let adminContainerTab="inventory";
 let chefTab="container";
+let depotTab="inventory";
 let refreshTimer=null;
 let realtimeChannel=null;
 
@@ -12,6 +14,8 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 const now=()=>new Date().toISOString();
 const fmtDate=s=>s?new Date(s).toLocaleString("fr-FR",{dateStyle:"short",timeStyle:"short"}):"—";
+const fmtDay=s=>s?new Date(`${s}T12:00:00`).toLocaleDateString("fr-FR"):"—";
+const fmtMoney=n=>Number(n||0).toLocaleString("fr-FR",{style:"currency",currency:"EUR"});
 
 function configured(){return Boolean((cfg.SUPABASE_URL||"").trim()&&(cfg.SUPABASE_PUBLISHABLE_KEY||"").trim())}
 function toast(msg){const t=$("#toast");t.textContent=msg;t.classList.remove("hidden");clearTimeout(window.__toast);window.__toast=setTimeout(()=>t.classList.add("hidden"),3000)}
@@ -29,6 +33,7 @@ function getContainer(id){return state.containers.find(x=>x.id===id)}
 function currentContainer(){return getContainer(session.containerId)}
 function getDepot(){return state.containers.find(x=>x.kind==="depot")}
 function chefContainers(){return state.containers.filter(x=>x.kind==="chef")}
+function documentsFor(itemId){return state.documents.filter(x=>x.container_item_id===itemId).sort((a,b)=>new Date(b.document_date||b.created_at)-new Date(a.document_date||a.created_at))}
 
 function containerStats(c){
   let p=0,r=0,m=0,e=0;
@@ -169,7 +174,7 @@ async function logout(){
   if(realtimeChannel&&sb){try{await sb.removeChannel(realtimeChannel)}catch(_){}}
   realtimeChannel=null;
   session={type:null,chefId:null,containerId:null,name:null};
-  state={chefs:[],containers:[],catalog:[],items:[],units:[],history:[]};
+  state={chefs:[],containers:[],catalog:[],items:[],units:[],history:[],documents:[]};
   $("#roleSmall").textContent="Rosset Boulon & Fils";
   showLogin();
   renderNames();
@@ -178,16 +183,17 @@ async function logout(){
 async function loadAll({quiet=false}={}){
   if(!sb||!session.type)return false;
   try{
-    const [a,b,c,d,u,e]=await Promise.all([
+    const [a,b,c,d,u,e,f]=await Promise.all([
       sb.from("chefs").select("id,first_name,last_name,name,created_at").order("name"),
       sb.from("containers").select("*").order("name"),
       sb.from("catalog").select("*").order("name"),
       sb.from("container_items").select("*").order("name"),
       sb.from("equipment_units").select("*").order("unit_no"),
-      sb.from("history").select("*").order("created_at",{ascending:false}).limit(500)
+      sb.from("history").select("*").order("created_at",{ascending:false}).limit(500),
+      sb.from("equipment_documents").select("*").order("created_at",{ascending:false})
     ]);
-    for(const r of[a,b,c,d,u,e])if(r.error)throw r.error;
-    state={chefs:a.data||[],containers:b.data||[],catalog:c.data||[],items:d.data||[],units:u.data||[],history:e.data||[]};
+    for(const r of[a,b,c,d,u,e,f])if(r.error)throw r.error;
+    state={chefs:a.data||[],containers:b.data||[],catalog:c.data||[],items:d.data||[],units:u.data||[],history:e.data||[],documents:f.data||[]};
 
     if(session.type==="chef"){
       const ch=state.chefs.find(x=>x.id===session.chefId);
@@ -216,6 +222,7 @@ function subscribeRealtime(){
     .on("postgres_changes",{event:"*",schema:"public",table:"history"},refresh)
     .on("postgres_changes",{event:"*",schema:"public",table:"catalog"},refresh)
     .on("postgres_changes",{event:"*",schema:"public",table:"equipment_units"},refresh)
+    .on("postgres_changes",{event:"*",schema:"public",table:"equipment_documents"},refresh)
     .on("postgres_changes",{event:"*",schema:"public",table:"chefs"},async()=>{await loadLoginDirectory();refresh()})
     .subscribe(status=>{if(status==="SUBSCRIBED")setSync(true,"Temps réel actif")});
 }
@@ -253,6 +260,73 @@ function inventoryHTML(c,opts={}){
   return `<div class="table-card inventory"><table class="table"><thead><tr><th>Matériel</th><th>Présent</th><th>Réparation</th><th>Manquant</th><th>État</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div><div class="mobile-cards">${cards}</div>`;
 }
 
+function documentKindLabel(kind){return kind==="repair"?"Réparation":"Facture d’achat"}
+
+function invoiceInventoryHTML(c){
+  const list=itemsFor(c.id).filter(i=>!(c.kind==="depot"&&i.expected===0&&i.present===0&&i.repair===0));
+  if(!list.length)return '<div class="card empty">Aucun matériel enregistré dans cet inventaire.</div>';
+  return `<div class="invoice-grid">${list.map(i=>{
+    const docs=documentsFor(i.id);
+    const purchaseTotal=docs.filter(d=>d.document_type==="purchase").reduce((sum,d)=>sum+(+d.amount||0),0);
+    const repairTotal=docs.filter(d=>d.document_type==="repair").reduce((sum,d)=>sum+(+d.amount||0),0);
+    const documentRows=docs.map(d=>`<div class="document-row"><div class="document-icon">${d.document_type==="repair"?"🔧":"🧾"}</div><div class="document-main"><b>${esc(d.label||documentKindLabel(d.document_type))}</b><small>${documentKindLabel(d.document_type)} · ${fmtDay(d.document_date)} · ${fmtMoney(d.amount)}</small>${d.note?`<small>${esc(d.note)}</small>`:""}</div><div class="document-actions"><button class="btn btn-light btn-sm" onclick="openStoredDocument('${d.id}')">Ouvrir</button><button class="btn btn-danger btn-sm" onclick="deleteStoredDocument('${d.id}')">Supprimer</button></div></div>`).join("");
+    return `<article class="card invoice-card"><div class="invoice-head"><div><div class="item-name">${esc(i.name)}</div>${itemMetaHTML(i)}<div class="muted">${i.present} présent${i.present>1?"s":""} · ${i.repair} en réparation</div></div><button class="btn btn-primary btn-sm" onclick="openDocumentAdd('${i.id}')">＋ Ajouter</button></div><div class="money-summary"><div><span>Prix / achats</span><b>${fmtMoney(purchaseTotal)}</b></div><div><span>Réparations</span><b>${fmtMoney(repairTotal)}</b></div><div><span>Pièces jointes</span><b>${docs.length}</b></div></div><div class="document-list">${documentRows||'<div class="document-empty">Aucune facture ou réparation jointe.</div>'}</div></article>`;
+  }).join("")}</div>`;
+}
+
+function renderInvoices(root,c){
+  const docs=itemsFor(c.id).flatMap(i=>documentsFor(i.id));
+  const purchases=docs.filter(d=>d.document_type==="purchase").reduce((sum,d)=>sum+(+d.amount||0),0);
+  const repairs=docs.filter(d=>d.document_type==="repair").reduce((sum,d)=>sum+(+d.amount||0),0);
+  root.innerHTML=`<div class="depot-note"><b>Factures et réparations :</b> chaque pièce jointe est classée avec le matériel correspondant et reste synchronisée sur téléphone et ordinateur.</div><div class="hero"><div><span class="badge">FACTURES</span><h1>${esc(c.name)}</h1><p>${itemsFor(c.id).length} types de matériel · ${docs.length} pièce${docs.length>1?"s":""} jointe${docs.length>1?"s":""}</p></div><div class="hero-actions"><button class="btn btn-light" onclick="loadAll()">↻ Actualiser</button></div></div><div class="grid grid-3 invoice-totals"><div class="card stat"><div><div class="stat-label">PRIX / ACHATS</div><div class="stat-num money">${fmtMoney(purchases)}</div></div><span class="document-badge">🧾</span></div><div class="card stat"><div><div class="stat-label">RÉPARATIONS</div><div class="stat-num money">${fmtMoney(repairs)}</div></div><span class="document-badge">🔧</span></div><div class="card stat"><div><div class="stat-label">TOTAL</div><div class="stat-num money">${fmtMoney(purchases+repairs)}</div></div><span class="document-badge">€</span></div></div><div class="section-title"><h2>Inventaire et pièces jointes</h2><span>PDF, JPG, PNG ou WEBP · 15 Mo max.</span></div>${invoiceInventoryHTML(c)}`;
+}
+
+function openDocumentAdd(itemId){
+  const item=getItem(itemId);if(!item)return;
+  modal("Ajouter une facture / réparation",`<div class="form-grid"><div class="field full"><label>Matériel</label><input value="${esc(item.name)}" disabled></div><div class="field"><label>Type de document</label><select id="docType"><option value="purchase">Facture d’achat</option><option value="repair">Réparation</option></select></div><div class="field"><label>Prix / montant (€)</label><input id="docAmount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0,00"></div><div class="field"><label>Date</label><input id="docDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div><div class="field"><label>Intitulé</label><input id="docLabel" placeholder="Ex. Facture Makita"></div><div class="field full"><label>Pièce jointe obligatoire</label><input id="docFile" type="file" accept="application/pdf,image/jpeg,image/png,image/webp"></div><div class="field full"><label>Commentaire</label><textarea id="docNote" placeholder="Fournisseur, panne réparée, référence..."></textarea></div></div><div class="depot-note" style="margin-top:12px">Formats acceptés : PDF, JPG, PNG et WEBP. Taille maximale : 15 Mo.</div>`,`<button class="btn btn-light" onclick="closeModal()">Annuler</button><button id="docSaveBtn" class="btn btn-primary" onclick="saveDocument('${itemId}')">Enregistrer</button>`);
+}
+
+async function saveDocument(itemId){
+  const item=getItem(itemId),file=$("#docFile")?.files?.[0];if(!item)return;
+  const allowed=["application/pdf","image/jpeg","image/png","image/webp"];
+  if(!file){toast("Ajoute la facture ou le justificatif en pièce jointe.");return}
+  if(!allowed.includes(file.type)){toast("Format non accepté. Utilise PDF, JPG, PNG ou WEBP.");return}
+  if(file.size>15*1024*1024){toast("Le fichier dépasse 15 Mo.");return}
+  const amount=Math.max(0,Number($("#docAmount")?.value||0));
+  const documentType=$("#docType")?.value==="repair"?"repair":"purchase";
+  const extension=(file.name.split(".").pop()||"bin").toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,8)||"bin";
+  const storagePath=`${item.container_id}/${item.id}/${crypto.randomUUID()}.${extension}`;
+  const button=$("#docSaveBtn");if(button){button.disabled=true;button.textContent="Envoi en cours…"}
+  try{
+    const upload=await sb.storage.from("rbf-documents").upload(storagePath,file,{cacheControl:"3600",contentType:file.type,upsert:false});
+    if(upload.error)throw upload.error;
+    const row={container_item_id:item.id,document_type:documentType,label:$("#docLabel")?.value.trim()||documentKindLabel(documentType),amount,document_date:$("#docDate")?.value||null,note:$("#docNote")?.value.trim()||"",storage_path:storagePath,file_name:file.name,mime_type:file.type,file_size:file.size,created_by:session.name||"Utilisateur"};
+    const saved=await sb.from("equipment_documents").insert(row);
+    if(saved.error){await sb.storage.from("rbf-documents").remove([storagePath]);throw saved.error}
+    closeModal();await loadAll({quiet:true});toast("Pièce jointe enregistrée");
+  }catch(err){console.error(err);toast("Erreur lors de l’envoi : "+(err.message||err));if(button){button.disabled=false;button.textContent="Enregistrer"}}
+}
+
+async function openStoredDocument(documentId){
+  const doc=state.documents.find(x=>x.id===documentId);if(!doc)return;
+  const tab=window.open("","_blank");
+  try{
+    const {data,error}=await sb.storage.from("rbf-documents").createSignedUrl(doc.storage_path,120);
+    if(error)throw error;
+    if(tab)tab.location.href=data.signedUrl;else window.location.href=data.signedUrl;
+  }catch(err){if(tab)tab.close();toast("Impossible d’ouvrir la pièce jointe : "+(err.message||err))}
+}
+
+async function deleteStoredDocument(documentId){
+  const doc=state.documents.find(x=>x.id===documentId);if(!doc)return;
+  if(!confirm(`Supprimer « ${doc.label||doc.file_name} » ?`))return;
+  try{
+    const removed=await sb.storage.from("rbf-documents").remove([doc.storage_path]);if(removed.error)throw removed.error;
+    const deleted=await sb.from("equipment_documents").delete().eq("id",doc.id);if(deleted.error)throw deleted.error;
+    await loadAll({quiet:true});toast("Pièce jointe supprimée");
+  }catch(err){console.error(err);toast("Suppression impossible : "+(err.message||err))}
+}
+
 function historyText(h){
   if(h.event_type==="repair")return `${h.qty} ${h.item_name} envoyé(s) en réparation`;
   if(h.event_type==="return")return `${h.qty} ${h.item_name} revenu(s) de réparation`;
@@ -265,6 +339,8 @@ function historyText(h){
   if(h.event_type==="transfer_out")return `Transfert sortant : ${h.qty} ${h.item_name}`;
   if(h.event_type==="transfer_in")return `Transfert entrant : ${h.qty} ${h.item_name}`;
   if(h.event_type==="chef_edit")return `Chef de chantier modifié : ${h.item_name}`;
+  if(h.event_type==="document_add")return `Pièce jointe ajoutée : ${h.item_name}`;
+  if(h.event_type==="document_delete")return `Pièce jointe supprimée : ${h.item_name}`;
   return h.event_type;
 }
 
@@ -294,6 +370,7 @@ function renderChef(){
     <div class="tabs chef-tabs">
       <button class="tab ${chefTab==="container"?"active":""}" onclick="setChefTab('container')">Mon container</button>
       <button class="tab ${chefTab==="transfer"?"active":""}" onclick="setChefTab('transfer')">⇄ Transférer</button>
+      <button class="tab ${chefTab==="invoices"?"active":""}" onclick="setChefTab('invoices')">🧾 Factures</button>
     </div>
     <div id="chefContent" style="margin-top:15px"></div>`;
   renderChefTab();
@@ -302,6 +379,7 @@ function renderChef(){
 function renderChefTab(){
   const root=$("#chefContent"),c=currentContainer();if(!root||!c)return;
   if(chefTab==="transfer"){renderChefTransfers(root,c);return}
+  if(chefTab==="invoices"){renderInvoices(root,c);return}
   root.innerHTML=`
     <div class="hero"><div><span class="badge">${esc(c.name)}</span><h1>Mon container</h1><p>${c.location?esc(c.location)+" · ":""}Dernier inventaire : ${c.last_inventory?fmtDate(c.last_inventory):"jamais"}</p></div><div class="hero-actions"><button class="btn btn-light" onclick="loadAll()">↻ Actualiser</button><button class="btn btn-accent" onclick="openItemAdd('${c.id}')">＋ Matériel</button><button class="btn btn-accent" onclick="openMachineAdd('${c.id}')">🚜 Engin</button><button class="btn btn-accent" onclick="openSlingAdd('${c.id}')">🪝 Élingue</button><button class="btn btn-primary" onclick="validateInventory('${c.id}')">✓ Valider inventaire</button></div></div>
     ${statsCards(containerStats(c))}
@@ -336,6 +414,21 @@ function renderPublicDepot(){
   if(!d){root.innerHTML='<div class="card empty">Dépôt introuvable dans Supabase.</div>';return}
   root.innerHTML=`
     <div class="brand-panel"><h2>Rosset Boulon &amp; Fils</h2><p>Espace dépôt commun accessible sans mot de passe.</p><div class="brand-tags"><span class="brand-tag">Dépôt RB&amp;F</span><span class="brand-tag">Accès libre</span><span class="brand-tag">Temps réel</span></div></div>
+    <div class="tabs chef-tabs"><button class="tab ${depotTab==="inventory"?"active":""}" onclick="setDepotTab('inventory')">Inventaire</button><button class="tab ${depotTab==="invoices"?"active":""}" onclick="setDepotTab('invoices')">🧾 Factures</button></div>
+    <div id="depotContent" style="margin-top:15px"></div>`;
+  renderPublicDepotTab();
+}
+
+function setDepotTab(tab){
+  if(!["depot","admin"].includes(session.type))return;
+  depotTab=tab;
+  if(session.type==="depot")renderPublicDepot();else renderAdmin();
+}
+
+function renderPublicDepotTab(){
+  const root=$("#depotContent"),d=getDepot();if(!root||!d)return;
+  if(depotTab==="invoices"){renderInvoices(root,d);return}
+  root.innerHTML=`
     <div class="depot-note"><b>Dépôt central :</b> vous pouvez ajouter et gérer le matériel du dépôt, puis le transférer vers le container du chef de chantier choisi.</div>
     <div class="hero"><div><span class="badge">DÉPÔT</span><h1>${esc(d.name)}</h1><p>${d.location?esc(d.location):"Stock central RB&F"}</p></div><div class="hero-actions"><button class="btn btn-accent" onclick="openItemAdd('${d.id}')">＋ Matériel</button><button class="btn btn-accent" onclick="openMachineAdd('${d.id}')">🚜 Engin</button><button class="btn btn-accent" onclick="openSlingAdd('${d.id}')">🪝 Élingue</button><button class="btn btn-light" onclick="loadAll()">↻ Actualiser</button></div></div>
     ${statsCards(containerStats(d))}
@@ -382,7 +475,10 @@ function renderAdminTab(){
 function renderDepot(root){
   const d=getDepot();
   if(!d){root.innerHTML='<div class="card empty">Dépôt introuvable dans Supabase.</div>';return}
-  root.innerHTML=`
+  root.innerHTML=`<div class="tabs chef-tabs"><button class="tab ${depotTab==="inventory"?"active":""}" onclick="setDepotTab('inventory')">Inventaire</button><button class="tab ${depotTab==="invoices"?"active":""}" onclick="setDepotTab('invoices')">🧾 Factures</button></div><div id="adminDepotContent" style="margin-top:15px"></div>`;
+  const content=$("#adminDepotContent");
+  if(depotTab==="invoices"){renderInvoices(content,d);return}
+  content.innerHTML=`
     <div class="depot-note"><b>Dépôt central :</b> ajoutez du matériel directement ici, ou transférez du matériel entre le dépôt et un container chef.</div>
     <div class="hero"><div><span class="badge">DÉPÔT</span><h1>${esc(d.name)}</h1><p>${d.location?esc(d.location):"Stock central RB&F"}</p></div><div class="hero-actions"><button class="btn btn-accent" onclick="openItemAdd('${d.id}')">＋ Matériel</button><button class="btn btn-accent" onclick="openMachineAdd('${d.id}')">🚜 Engin</button><button class="btn btn-accent" onclick="openSlingAdd('${d.id}')">🪝 Élingue</button><button class="btn btn-light" onclick="loadAll()">↻ Actualiser</button></div></div>
     ${statsCards(containerStats(d))}
@@ -399,7 +495,8 @@ function renderChefManager(root){
     <div class="grid grid-2">${state.chefs.map(ch=>`<div class="card"><div class="chef-edit-row"><div><h3>${esc(ch.name)}</h3><div class="muted">Mot de passe actuel basé sur le prénom : RBF${esc(ch.first_name)}</div></div><button class="btn btn-light" onclick="openChefEdit('${ch.id}')">✏️ Modifier</button></div></div>`).join("")}</div>`;
 }
 
-function openAdminContainer(id){session.containerId=id;renderAdminContainer(id)}
+function openAdminContainer(id){session.containerId=id;adminContainerTab="inventory";renderAdminContainer(id)}
+function setAdminContainerTab(tab){if(session.type!=="admin"||!session.containerId)return;adminContainerTab=tab;renderAdminContainer(session.containerId)}
 
 function renderAdminContainer(id){
   const c=getContainer(id);if(!c)return;
@@ -407,12 +504,11 @@ function renderAdminContainer(id){
   const root=$("#adminScreen");root.classList.remove("hidden");
   root.innerHTML=`
     <div class="hero"><div><button class="btn btn-light btn-sm" onclick="session.containerId=null;renderAdmin()">← Retour</button><h1 style="margin-top:12px">${esc(chefName(c))}</h1><p>${esc(c.name)}${c.location?" · "+esc(c.location):""}</p></div><div class="hero-actions"><button class="btn btn-light" onclick="openContainerMeta('${c.id}')">⚙️ Container</button><button class="btn btn-accent" onclick="openItemAdd('${c.id}')">＋ Matériel</button><button class="btn btn-accent" onclick="openMachineAdd('${c.id}')">🚜 Engin</button><button class="btn btn-accent" onclick="openSlingAdd('${c.id}')">🪝 Élingue</button></div></div>
-    ${statsCards(containerStats(c))}
-    <div class="depot-note">Depuis cet écran, le bouton <b>Transférer</b> permet de déposer du matériel de ce container vers le dépôt central.</div>
-    <div class="section-title"><h2>Inventaire</h2><span>${itemsFor(c.id).length} types</span></div>
-    ${inventoryHTML(c,{transfer:true})}
-    <div class="section-title"><h2>Historique</h2></div>
-    ${historyHTML(c.id,40)}`;
+    <div class="tabs chef-tabs"><button class="tab ${adminContainerTab==="inventory"?"active":""}" onclick="setAdminContainerTab('inventory')">Inventaire</button><button class="tab ${adminContainerTab==="invoices"?"active":""}" onclick="setAdminContainerTab('invoices')">🧾 Factures</button></div>
+    <div id="adminContainerContent" style="margin-top:15px"></div>`;
+  const content=$("#adminContainerContent");
+  if(adminContainerTab==="invoices"){renderInvoices(content,c);return}
+  content.innerHTML=`${statsCards(containerStats(c))}<div class="depot-note" style="margin-top:14px">Depuis cet écran, le bouton <b>Transférer</b> permet de déposer du matériel de ce container vers le dépôt central.</div><div class="section-title"><h2>Inventaire</h2><span>${itemsFor(c.id).length} types</span></div>${inventoryHTML(c,{transfer:true})}<div class="section-title"><h2>Historique</h2></div>${historyHTML(c.id,40)}`;
 }
 
 async function syncUnitsToExpected(item){
@@ -533,6 +629,8 @@ async function saveItemEdit(id){
 
 async function deleteItem(id){
   const i=getItem(id),c=getContainer(i.container_id);if(!confirm(`Supprimer « ${i.name} » de ${c.name} ?`))return;
+  const paths=documentsFor(id).map(d=>d.storage_path).filter(Boolean);
+  if(paths.length){const removed=await sb.storage.from("rbf-documents").remove(paths);if(removed.error){toast("Impossible de supprimer les pièces jointes : "+removed.error.message);return}}
   const{error}=await sb.from("container_items").delete().eq("id",id);if(error){toast("Erreur : "+error.message);return}
   await addHistory("item_delete",c,i.name,0,"");closeModal();await loadAll({quiet:true});toast("Matériel supprimé");
 }
